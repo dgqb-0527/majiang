@@ -19,21 +19,19 @@ const PLAYER_IMAGES = [
 
 const SEATS = ["top", "right", "bottom", "left"];
 const SPIN_MS = 2200;
-const CLICK_SOUND_CANDIDATES = [
+const CLICK_SOUND_FILES = [
   "music/1.mp3",
   "music/2.mp3",
-  "music/3.mp3",
-  "music/法国赌神 - 音效素材 免费下载 - .mp3",
-  "music/法国赌神-我要验牌_mp3 - 音效库 - .mp3",
-  "music/牌没有问题 音效素材 免费下载 - .mp3"
+  "music/3.mp3"
 ];
 
 const table = document.getElementById("table");
 const drum = document.getElementById("drum");
 const shuffleBtn = document.getElementById("shuffleBtn");
+const soundToggleBtn = document.getElementById("soundToggleBtn");
 
 const tokens = [];
-const clickAudios = CLICK_SOUND_CANDIDATES.map((path) => {
+const clickAudios = CLICK_SOUND_FILES.map((path) => {
   const src = encodeURI(path);
   const audio = new Audio(src);
   audio.preload = "auto";
@@ -50,6 +48,46 @@ const clickAudios = CLICK_SOUND_CANDIDATES.map((path) => {
 });
 let activeClickItem = null;
 let clickSoundCursor = 0;
+const warmedImageCache = [];
+let fallbackAudioCtx = null;
+let soundEnabled = true;
+
+function loadSoundSetting() {
+  try {
+    const val = localStorage.getItem("sound_enabled");
+    if (val === "0") {
+      soundEnabled = false;
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function persistSoundSetting() {
+  try {
+    localStorage.setItem("sound_enabled", soundEnabled ? "1" : "0");
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function syncSoundToggleUI() {
+  if (!soundToggleBtn) {
+    return;
+  }
+  soundToggleBtn.setAttribute("aria-pressed", soundEnabled ? "true" : "false");
+  soundToggleBtn.textContent = soundEnabled ? "音效: 开" : "音效: 关";
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  if (!soundEnabled && activeClickItem && !activeClickItem.audio.paused) {
+    activeClickItem.audio.pause();
+    activeClickItem.audio.currentTime = 0;
+  }
+  persistSoundSetting();
+  syncSoundToggleUI();
+}
 
 function makeToken(player) {
   const token = document.createElement("div");
@@ -181,9 +219,37 @@ function pickNextUsableClickItem() {
   return null;
 }
 
+function playFallbackBeep() {
+  if (!soundEnabled) {
+    return;
+  }
+  try {
+    fallbackAudioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const now = fallbackAudioCtx.currentTime;
+    const osc = fallbackAudioCtx.createOscillator();
+    const gain = fallbackAudioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(660, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.04, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    osc.connect(gain);
+    gain.connect(fallbackAudioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  } catch {
+    // Ignore fallback audio failures.
+  }
+}
+
 function playNextClickSound() {
+  if (!soundEnabled) {
+    return;
+  }
+
   const item = pickNextUsableClickItem();
   if (!item) {
+    playFallbackBeep();
     return;
   }
 
@@ -211,6 +277,25 @@ function renderInitialTokens() {
     token.dataset.seat = SEATS[idx];
     table.appendChild(token);
     tokens.push(token);
+  });
+}
+
+function warmupAssets() {
+  // Warm up image cache to reduce first-paint latency for avatars.
+  PLAYER_IMAGES.forEach((player) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = player.originalSrc;
+    warmedImageCache.push(img);
+  });
+
+  // Trigger browser fetch for click sounds early.
+  clickAudios.forEach((item) => {
+    try {
+      item.audio.load();
+    } catch {
+      item.usable = false;
+    }
   });
 }
 
@@ -291,9 +376,13 @@ async function shuffleSeats() {
 }
 
 function boot() {
+  loadSoundSetting();
+  syncSoundToggleUI();
+  warmupAssets();
   renderInitialTokens();
   placeBySeats();
   shuffleBtn.addEventListener("click", shuffleSeats);
+  soundToggleBtn?.addEventListener("click", toggleSound);
   window.addEventListener("resize", () => {
     placeBySeats();
   });
