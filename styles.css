@@ -86,6 +86,34 @@ body {
   cursor: not-allowed;
 }
 
+#soundToggleBtn {
+  border: 1px solid #a47e49;
+  color: #f5e6c4;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 11px 20px;
+  border-radius: 999px;
+  font-family: inherit;
+  background: linear-gradient(120deg, #5f4325, #7a5932);
+  box-shadow: 0 8px 20px #22130840;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+#soundToggleBtn:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.06);
+}
+
+#soundToggleBtn:active {
+  transform: translateY(1px);
+}
+
+#soundToggleBtn[aria-pressed="false"] {
+  color: #eadbc3;
+  background: linear-gradient(120deg, #6b6a66, #7d7b77);
+  border-color: #8b887f;
+}
+
 .table-wrap {
   width: min(94vw, 760px);
 }
