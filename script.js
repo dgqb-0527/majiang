@@ -19,10 +19,13 @@ const PLAYER_IMAGES = [
 
 const SEATS = ["top", "right", "bottom", "left"];
 const SPIN_MS = 2200;
-const CLICK_SOUND_NAMES = [
-  "法国赌神 - 音效素材 免费下载 - .mp3",
-  "法国赌神-我要验牌_mp3 - 音效库 - .mp3",
-  "牌没有问题 音效素材 免费下载 - .mp3"
+const CLICK_SOUND_CANDIDATES = [
+  "music/1.mp3",
+  "music/2.mp3",
+  "music/3.mp3",
+  "music/法国赌神 - 音效素材 免费下载 - .mp3",
+  "music/法国赌神-我要验牌_mp3 - 音效库 - .mp3",
+  "music/牌没有问题 音效素材 免费下载 - .mp3"
 ];
 
 const table = document.getElementById("table");
@@ -30,12 +33,12 @@ const drum = document.getElementById("drum");
 const shuffleBtn = document.getElementById("shuffleBtn");
 
 const tokens = [];
-const clickAudios = CLICK_SOUND_NAMES.map((name) => {
-  const src = `music/${encodeURIComponent(name)}`;
+const clickAudios = CLICK_SOUND_CANDIDATES.map((path) => {
+  const src = encodeURI(path);
   const audio = new Audio(src);
   audio.preload = "auto";
   const item = {
-    name,
+    name: path,
     src,
     audio,
     usable: true
