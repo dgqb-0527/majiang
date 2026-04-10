@@ -1,0 +1,298 @@
+我无法直接提供可供下载的原始代码文件。但是，我可以向你描述如何将上面的设计转化为可供部署的 HTML 和 JavaScript 代码结构。
+
+你可以将这些步骤组合成一个 `index.html` 文件，然后上传到你的 GitHub 仓库。
+
+### 1. HTML 文件结构 (`index.html`)
+
+在 HTML 中，你需要创建一个包含四个座位位置和一个中心“洗衣机”动画容器的麻将桌布局。
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>麻将随机换座位</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="mahjong-table">
+    <div id="seat-top" class="seat top"></div>
+    <div id="seat-bottom" class="seat bottom"></div>
+    <div id="seat-left" class="seat left"></div>
+    <div id="seat-right" class="seat right"></div>
+
+    <div id="washing-machine" class="washing-machine">
+        <div class="drum"></div>
+    </div>
+</div>
+
+<button id="shuffle-btn">开始随机换座位</button>
+
+<script src="script.js"></script>
+
+</body>
+</html>
+```
+
+### 2. CSS 样式文件 (`style.css`)
+
+你需要定义头像的大小、圆角和背景图片，以便在动画过程中引用它们。
+
+```css
+/* style.css */
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
+}
+
+.mahjong-table {
+    position: relative;
+    width: 400px; /* 根据需要调整 */
+    height: 400px;
+    background-color: #3e8e41; /* 绿色麻将桌 */
+    border: 10px solid #8b4513; /* 木质边框 */
+    border-radius: 20px;
+    margin-bottom: 20px;
+}
+
+.seat {
+    position: absolute;
+    width: 80px; /* 头像大小 */
+    height: 80px;
+    background-size: cover;
+    background-position: center;
+    border-radius: 50%; /* 圆形头像 */
+    border: 3px solid #fff;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* 座位位置 */
+.top { top: 10px; left: 160px; }
+.bottom { bottom: 10px; left: 160px; }
+.left { top: 160px; left: 10px; }
+.right { top: 160px; right: 10px; }
+
+/* 洗衣机容器 */
+.washing-machine {
+    position: absolute;
+    top: 100px;
+    left: 100px;
+    width: 200px;
+    height: 200px;
+    background-color: #ccc;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    display: none; /* 初始隐藏 */
+}
+
+.washing-machine .drum {
+    width: 150px;
+    height: 150px;
+    border: 10px dashed #fff;
+    border-radius: 50%;
+    /* 初始不旋转 */
+}
+
+/* 头像定义 (关键点) */
+.avatar {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    background-size: cover;
+    background-position: center;
+    border-radius: 50%;
+    z-index: 10;
+}
+
+/* 使用网络地址引用你的头像 */
+.avatar-thumbsup {
+    background-image: url('https://image.pollinations.ai/prompt/A%20photorealistic%20human%20hand%20giving%20a%20thumbs-up,%20with%20visible%20skin%20texture%20and%20a%20visible%20sleeve,%20and%20clearly%20legible%20simplified%20Chinese%20text%20'优秀'%20(Excellent),%20isolated%20on%20a%20clean%20background.');
+}
+
+.avatar-mouse {
+    background-image: url('https://image.pollinations.ai/prompt/A%20cartoon%20gray%20head,%20mouse-like%20with%20pink%20inner%20ears,%20heavy%20black%20eyebrows,%20and%20distinct,%20glossy%20red%20pursed%20lips,%20wearing%20a%20black%20suit%20jacket%20and%20white%20shirt%20collar.');
+}
+
+.avatar-sun {
+    background-image: url('https://image.pollinations.ai/prompt/A%20hand-drawn%20yellow%20circular%20sun%20with%20two%20dark%20dot%20eyes,%20a%20simple%20smile,%20pink%20blushes,%20and%20radiating%20red%20and%20orange%20rays%20of%20light.');
+}
+
+.avatar-cat {
+    background-image: url('https://image.pollinations.ai/prompt/A%20photorealistic%20bicolor%20gray%20and%20white%20cat%20lying%20splayed%20out%20on%20its%20back%20or%20side%20on%20a%20light-colored%20tiled%20floor%20with%20legs%20curled%20and%20tail%20visible.');
+}
+
+#shuffle-btn {
+    padding: 10px 20px;
+    font-size: 18px;
+    cursor: pointer;
+    background-color: #ff9800;
+    color: white;
+    border: none;
+    border-radius: 5px;
+}
+```
+
+### 3. JavaScript 动画逻辑 (`script.js`)
+
+JavaScript 将处理所有复杂的逻辑：点击按钮、收集头像、播放洗衣机旋转动画、生成新的随机顺序，最后将头像“吐”到新的座位上。
+
+```javascript
+// script.js
+document.addEventListener('DOMContentLoaded', () => {
+    const shuffleBtn = document.getElementById('shuffle-btn');
+    const washingMachine = document.getElementById('washing-machine');
+    const drum = washingMachine.querySelector('.drum');
+    
+    // 初始化四个头像元素
+    const avatars = [
+        { id: 'thumbsup', class: 'avatar-thumbsup' },
+        { id: 'mouse', class: 'avatar-mouse' },
+        { id: 'sun', class: 'avatar-sun' },
+        { id: 'cat', class: 'avatar-cat' }
+    ];
+
+    // 获取座位位置（相对于父元素）
+    const getSeatPositions = () => {
+        const tableRect = document.querySelector('.mahjong-table').getBoundingClientRect();
+        return {
+            top: { y: 10 + 40, x: 160 + 40 }, // 中心点
+            bottom: { y: 310 + 40, x: 160 + 40 },
+            left: { y: 160 + 40, x: 10 + 40 },
+            right: { y: 160 + 40, x: 310 + 40 }
+        };
+    };
+
+    // 随机打乱数组
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // 初始将头像放到座位上
+    function initSeats() {
+        const positions = ['top', 'bottom', 'left', 'right'];
+        const seats = document.querySelectorAll('.seat');
+        avatars.forEach((avatar, index) => {
+            const avatarEl = document.createElement('div');
+            avatarEl.className = `avatar ${avatar.class}`;
+            avatarEl.id = `avatar-${avatar.id}`;
+            document.querySelector('.mahjong-table').appendChild(avatarEl);
+            
+            // 初始定位到座位
+            anime({
+                targets: avatarEl,
+                translateX: getSeatPositions()[positions[index]].x - 40,
+                translateY: getSeatPositions()[positions[index]].y - 40,
+                duration: 0
+            });
+        });
+    }
+
+    initSeats();
+
+    shuffleBtn.addEventListener('click', () => {
+        shuffleBtn.disabled = true; // 防止重复点击
+
+        // --- 阶段 1：收集到中心 ---
+        anime({
+            targets: '.avatar',
+            translateX: 160, // 洗衣机中心 (400/2 - 80/2)
+            translateY: 160,
+            scale: 0.5,
+            easing: 'easeInOutQuad',
+            duration: 1000,
+            complete: () => {
+                // --- 阶段 2：洗衣机旋转 ---
+                washingMachine.style.display = 'flex'; // 显示洗衣机
+                
+                // 洗衣机旋转动画
+                const spinAnimation = anime({
+                    targets: drum,
+                    rotate: '3turn',
+                    duration: 3000,
+                    easing: 'linear',
+                    loop: true
+                });
+
+                // 头像在内部“洗”的动画
+                anime({
+                    targets: '.avatar',
+                    translateX: () => anime.random(100, 220), // 限制在 drum 内部
+                    translateY: () => anime.random(100, 220),
+                    rotate: () => anime.random(0, 360),
+                    scale: () => anime.random(0.3, 0.7),
+                    duration: 3000,
+                    easing: 'linear',
+                    loop: true
+                });
+
+                // 3秒后停止旋转并吐出
+                setTimeout(() => {
+                    spinAnimation.pause(); // 停止洗衣机旋转
+                    
+                    // --- 阶段 3：随机吐出到座位 ---
+                    
+                    // 生成新的随机座位顺序
+                    const newPositions = ['top', 'bottom', 'left', 'right'];
+                    shuffleArray(newPositions);
+
+                    // 获取当前存在的头像元素
+                    const avatarElements = document.querySelectorAll('.avatar');
+
+                    avatarElements.forEach((avatarEl, index) => {
+                        // 目标位置
+                        const targetPosName = newPositions[index];
+                        const targetCoords = getSeatPositions()[targetPosName];
+
+                        // 吐出动画
+                        anime({
+                            targets: avatarEl,
+                            translateX: [
+                                { value: 160, duration: 0 }, // 先回到中心
+                                { value: targetCoords.x - 40, duration: 800, delay: index * 200 } // 分批吐出
+                            ],
+                            translateY: [
+                                { value: 160, duration: 0 },
+                                { value: targetCoords.y - 40, duration: 800, delay: index * 200 }
+                            ],
+                            rotate: [
+                                { value: 0, duration: 0 },
+                                { value: '2turn', duration: 800, delay: index * 200 } // 吐出时旋转
+                            ],
+                            scale: [
+                                { value: 0.5, duration: 0 },
+                                { value: 1, duration: 800, delay: index * 200 }
+                            ],
+                            easing: 'easeOutQuad',
+                            complete: (anim) => {
+                                // 最后一个动画完成时
+                                if (index === avatarElements.length - 1) {
+                                    washingMachine.style.display = 'none'; // 隐藏洗衣机
+                                    shuffleBtn.disabled = false; // 启用按钮
+                                }
+                            }
+                        });
+                    });
+
+                }, 3000); // “洗” 3秒
+            }
+        });
+    });
+});
+```
+
+把这三部分代码分别保存为文件，确保它们在同一个文件夹中。你现在的头像 URL 是占位符，如果你的图片托管在其他地方（如 GitHub 或 Cloudinary），请在 CSS 中替换它们。
