@@ -29,6 +29,10 @@ const table = document.getElementById("table");
 const drum = document.getElementById("drum");
 const shuffleBtn = document.getElementById("shuffleBtn");
 const soundToggleBtn = document.getElementById("soundToggleBtn");
+const compassToggleBtn = document.getElementById("compassToggleBtn");
+const compassStatus = document.getElementById("compassStatus");
+const compassNeedle = document.getElementById("compassNeedle");
+const compassHeading = document.getElementById("compassHeading");
 
 const tokens = [];
 const clickAudios = CLICK_SOUND_FILES.map((path) => {
@@ -51,6 +55,10 @@ let clickSoundCursor = 0;
 const warmedImageCache = [];
 let fallbackAudioCtx = null;
 let soundEnabled = true;
+let compassEnabled = false;
+let compassListening = false;
+let smoothedHeading = null;
+let lastCompassUpdateAt = 0;
 
 function loadSoundSetting() {
   try {
@@ -87,6 +95,180 @@ function toggleSound() {
   }
   persistSoundSetting();
   syncSoundToggleUI();
+}
+
+function syncCompassToggleUI() {
+  if (!compassToggleBtn) {
+    return;
+  }
+  compassToggleBtn.setAttribute("aria-pressed", compassEnabled ? "true" : "false");
+  compassToggleBtn.textContent = compassEnabled ? "指南针: 关闭" : "指南针: 开启";
+}
+
+function setCompassStatus(text) {
+  if (!compassStatus) {
+    return;
+  }
+  compassStatus.textContent = text;
+}
+
+function headingToDirection(heading) {
+  if (heading >= 337.5 || heading < 22.5) {
+    return "北";
+  }
+  if (heading < 67.5) {
+    return "东北";
+  }
+  if (heading < 112.5) {
+    return "东";
+  }
+  if (heading < 157.5) {
+    return "东南";
+  }
+  if (heading < 202.5) {
+    return "南";
+  }
+  if (heading < 247.5) {
+    return "西南";
+  }
+  if (heading < 292.5) {
+    return "西";
+  }
+  return "西北";
+}
+
+function smoothCompassHeading(target) {
+  if (smoothedHeading == null) {
+    return target;
+  }
+  const delta = ((((target - smoothedHeading) % 360) + 540) % 360) - 180;
+  return (smoothedHeading + delta * 0.24 + 360) % 360;
+}
+
+function updateCompassVisual(rawHeading) {
+  const normalized = ((rawHeading % 360) + 360) % 360;
+  smoothedHeading = smoothCompassHeading(normalized);
+  lastCompassUpdateAt = Date.now();
+
+  if (compassNeedle) {
+    compassNeedle.style.transform = `translate(-50%, -50%) rotate(${smoothedHeading}deg)`;
+  }
+  if (compassHeading) {
+    const rounded = Math.round(smoothedHeading);
+    compassHeading.textContent = `${rounded}° ${headingToDirection(rounded)}`;
+  }
+}
+
+function resetCompassVisual() {
+  smoothedHeading = null;
+  lastCompassUpdateAt = 0;
+  if (compassNeedle) {
+    compassNeedle.style.transform = "translate(-50%, -50%) rotate(0deg)";
+  }
+  if (compassHeading) {
+    compassHeading.textContent = "--°";
+  }
+}
+
+function screenOrientationAngle() {
+  if (typeof window.screen?.orientation?.angle === "number") {
+    return window.screen.orientation.angle;
+  }
+  if (typeof window.orientation === "number") {
+    return window.orientation;
+  }
+  return 0;
+}
+
+function resolveCompassHeading(event) {
+  if (typeof event.webkitCompassHeading === "number" && Number.isFinite(event.webkitCompassHeading)) {
+    return event.webkitCompassHeading;
+  }
+  if (typeof event.alpha === "number" && Number.isFinite(event.alpha)) {
+    const raw = 360 - event.alpha + screenOrientationAngle();
+    return ((raw % 360) + 360) % 360;
+  }
+  return null;
+}
+
+function onDeviceOrientation(event) {
+  if (!compassEnabled) {
+    return;
+  }
+  const heading = resolveCompassHeading(event);
+  if (heading == null) {
+    return;
+  }
+  updateCompassVisual(heading);
+  setCompassStatus("指南针已开启");
+}
+
+function startCompassListening() {
+  if (compassListening) {
+    return;
+  }
+  window.addEventListener("deviceorientationabsolute", onDeviceOrientation);
+  window.addEventListener("deviceorientation", onDeviceOrientation);
+  compassListening = true;
+}
+
+function stopCompassListening() {
+  if (!compassListening) {
+    return;
+  }
+  window.removeEventListener("deviceorientationabsolute", onDeviceOrientation);
+  window.removeEventListener("deviceorientation", onDeviceOrientation);
+  compassListening = false;
+}
+
+async function requestCompassPermission() {
+  if (
+    typeof window.DeviceOrientationEvent !== "undefined" &&
+    typeof window.DeviceOrientationEvent.requestPermission === "function"
+  ) {
+    const state = await window.DeviceOrientationEvent.requestPermission();
+    return state === "granted";
+  }
+  return true;
+}
+
+async function toggleCompass() {
+  if (compassEnabled) {
+    compassEnabled = false;
+    stopCompassListening();
+    resetCompassVisual();
+    syncCompassToggleUI();
+    setCompassStatus("指南针未开启");
+    return;
+  }
+
+  if (typeof window.DeviceOrientationEvent === "undefined") {
+    setCompassStatus("当前浏览器不支持指南针");
+    return;
+  }
+
+  try {
+    const granted = await requestCompassPermission();
+    if (!granted) {
+      setCompassStatus("指南针权限被拒绝");
+      return;
+    }
+  } catch {
+    setCompassStatus("无法获取指南针权限");
+    return;
+  }
+
+  compassEnabled = true;
+  resetCompassVisual();
+  syncCompassToggleUI();
+  setCompassStatus("指南针已开启，正在读取方向...");
+  const checkAt = Date.now();
+  startCompassListening();
+  setTimeout(() => {
+    if (compassEnabled && lastCompassUpdateAt < checkAt) {
+      setCompassStatus("未获取到方向数据，请在手机浏览器中允许运动与方向访问");
+    }
+  }, 2600);
 }
 
 function makeToken(player) {
@@ -378,11 +560,16 @@ async function shuffleSeats() {
 function boot() {
   loadSoundSetting();
   syncSoundToggleUI();
+  syncCompassToggleUI();
+  resetCompassVisual();
   warmupAssets();
   renderInitialTokens();
   placeBySeats();
   shuffleBtn.addEventListener("click", shuffleSeats);
   soundToggleBtn?.addEventListener("click", toggleSound);
+  compassToggleBtn?.addEventListener("click", () => {
+    toggleCompass();
+  });
   window.addEventListener("resize", () => {
     placeBySeats();
   });
