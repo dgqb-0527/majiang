@@ -22,19 +22,34 @@ const SPIN_MS = 2200;
 const CLICK_SOUND_FILES = [
   "music/1.mp3",
   "music/2.mp3",
-  "music/3.mp3"
+  "music/3.mp3",
+  "music/4.wav",
+  "music/5.wav",
+  "music/6.wav",
+  "music/7.wav"
 ];
+const ANIMATION_MODE_IDS = ["drum", "orbit", "burst"];
+
+const STORAGE_KEYS = {
+  soundEnabled: "sound_enabled",
+  soundMode: "sound_mode",
+  animationMode: "animation_mode",
+  customAvatars: "custom_avatars"
+};
 
 const table = document.getElementById("table");
 const drum = document.getElementById("drum");
 const shuffleBtn = document.getElementById("shuffleBtn");
 const soundToggleBtn = document.getElementById("soundToggleBtn");
-const compassToggleBtn = document.getElementById("compassToggleBtn");
-const compassStatus = document.getElementById("compassStatus");
-const compassNeedle = document.getElementById("compassNeedle");
-const compassHeading = document.getElementById("compassHeading");
+const soundModeSelect = document.getElementById("soundModeSelect");
+const animationModeSelect = document.getElementById("animationModeSelect");
+const avatarUploadInput = document.getElementById("avatarUploadInput");
+const clearAvatarsBtn = document.getElementById("clearAvatarsBtn");
+const uploadStatus = document.getElementById("uploadStatus");
 
 const tokens = [];
+const customAvatarSources = new Array(PLAYER_IMAGES.length).fill(null);
+const warmedImageCache = [];
 const clickAudios = CLICK_SOUND_FILES.map((path) => {
   const src = encodeURI(path);
   const audio = new Audio(src);
@@ -50,32 +65,104 @@ const clickAudios = CLICK_SOUND_FILES.map((path) => {
   });
   return item;
 });
+
 let activeClickItem = null;
 let clickSoundCursor = 0;
-const warmedImageCache = [];
 let fallbackAudioCtx = null;
 let soundEnabled = true;
-let compassEnabled = false;
-let compassListening = false;
-let smoothedHeading = null;
-let lastCompassUpdateAt = 0;
+let selectedSoundMode = "random";
+let selectedAnimationMode = "random";
+let animationSoundTimer = null;
+let lastAnimationModeUsed = null;
 
-function loadSoundSetting() {
+function setUploadStatus(text) {
+  if (!uploadStatus) {
+    return;
+  }
+  uploadStatus.textContent = text;
+}
+
+function resolveAvatarSource(playerIndex) {
+  return customAvatarSources[playerIndex] || PLAYER_IMAGES[playerIndex].originalSrc;
+}
+
+function setTokenAvatar(token, src) {
+  const avatar = token.querySelector(".avatar-original");
+  if (!avatar) {
+    return;
+  }
+  avatar.style.backgroundImage = `url("${src}")`;
+}
+
+function applyAvatarSourcesToTokens() {
+  tokens.forEach((token) => {
+    const playerIndex = Number(token.dataset.playerIndex);
+    setTokenAvatar(token, resolveAvatarSource(playerIndex));
+  });
+}
+
+function loadPreferences() {
   try {
-    const val = localStorage.getItem("sound_enabled");
-    if (val === "0") {
+    const soundEnabledVal = localStorage.getItem(STORAGE_KEYS.soundEnabled);
+    if (soundEnabledVal === "0") {
       soundEnabled = false;
     }
+
+    const soundModeVal = localStorage.getItem(STORAGE_KEYS.soundMode);
+    if (soundModeVal === "random" || CLICK_SOUND_FILES.includes(soundModeVal)) {
+      selectedSoundMode = soundModeVal;
+    }
+
+    const animationModeVal = localStorage.getItem(STORAGE_KEYS.animationMode);
+    if (animationModeVal === "random" || ANIMATION_MODE_IDS.includes(animationModeVal)) {
+      selectedAnimationMode = animationModeVal;
+    }
+
+    const customAvatarsVal = localStorage.getItem(STORAGE_KEYS.customAvatars);
+    if (customAvatarsVal) {
+      const parsed = JSON.parse(customAvatarsVal);
+      if (Array.isArray(parsed)) {
+        parsed.slice(0, customAvatarSources.length).forEach((src, idx) => {
+          if (typeof src === "string" && src.startsWith("data:image/")) {
+            customAvatarSources[idx] = src;
+          }
+        });
+      }
+    }
   } catch {
-    // Ignore storage errors.
+    // Ignore local storage errors.
   }
 }
 
-function persistSoundSetting() {
+function persistSoundEnabled() {
   try {
-    localStorage.setItem("sound_enabled", soundEnabled ? "1" : "0");
+    localStorage.setItem(STORAGE_KEYS.soundEnabled, soundEnabled ? "1" : "0");
   } catch {
-    // Ignore storage errors.
+    // Ignore local storage errors.
+  }
+}
+
+function persistSoundMode() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.soundMode, selectedSoundMode);
+  } catch {
+    // Ignore local storage errors.
+  }
+}
+
+function persistAnimationMode() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.animationMode, selectedAnimationMode);
+  } catch {
+    // Ignore local storage errors.
+  }
+}
+
+function persistCustomAvatars() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.customAvatars, JSON.stringify(customAvatarSources));
+  } catch {
+    setUploadStatus("头像保存失败：浏览器存储空间不足");
   }
 }
 
@@ -87,194 +174,126 @@ function syncSoundToggleUI() {
   soundToggleBtn.textContent = soundEnabled ? "音效: 开" : "音效: 关";
 }
 
+function syncModeSelectUI() {
+  if (soundModeSelect) {
+    soundModeSelect.value = selectedSoundMode;
+  }
+  if (animationModeSelect) {
+    animationModeSelect.value = selectedAnimationMode;
+  }
+}
+
 function toggleSound() {
   soundEnabled = !soundEnabled;
   if (!soundEnabled && activeClickItem && !activeClickItem.audio.paused) {
     activeClickItem.audio.pause();
     activeClickItem.audio.currentTime = 0;
   }
-  persistSoundSetting();
+  persistSoundEnabled();
   syncSoundToggleUI();
 }
 
-function syncCompassToggleUI() {
-  if (!compassToggleBtn) {
-    return;
+function pickNextUsableClickItem() {
+  if (clickAudios.length === 0) {
+    return null;
   }
-  compassToggleBtn.setAttribute("aria-pressed", compassEnabled ? "true" : "false");
-  compassToggleBtn.textContent = compassEnabled ? "指南针: 关闭" : "指南针: 开启";
-}
 
-function setCompassStatus(text) {
-  if (!compassStatus) {
-    return;
-  }
-  compassStatus.textContent = text;
-}
-
-function headingToDirection(heading) {
-  if (heading >= 337.5 || heading < 22.5) {
-    return "北";
-  }
-  if (heading < 67.5) {
-    return "东北";
-  }
-  if (heading < 112.5) {
-    return "东";
-  }
-  if (heading < 157.5) {
-    return "东南";
-  }
-  if (heading < 202.5) {
-    return "南";
-  }
-  if (heading < 247.5) {
-    return "西南";
-  }
-  if (heading < 292.5) {
-    return "西";
-  }
-  return "西北";
-}
-
-function smoothCompassHeading(target) {
-  if (smoothedHeading == null) {
-    return target;
-  }
-  const delta = ((((target - smoothedHeading) % 360) + 540) % 360) - 180;
-  return (smoothedHeading + delta * 0.24 + 360) % 360;
-}
-
-function updateCompassVisual(rawHeading) {
-  const normalized = ((rawHeading % 360) + 360) % 360;
-  smoothedHeading = smoothCompassHeading(normalized);
-  lastCompassUpdateAt = Date.now();
-
-  if (compassNeedle) {
-    compassNeedle.style.transform = `translate(-50%, -50%) rotate(${smoothedHeading}deg)`;
-  }
-  if (compassHeading) {
-    const rounded = Math.round(smoothedHeading);
-    compassHeading.textContent = `${rounded}° ${headingToDirection(rounded)}`;
-  }
-}
-
-function resetCompassVisual() {
-  smoothedHeading = null;
-  lastCompassUpdateAt = 0;
-  if (compassNeedle) {
-    compassNeedle.style.transform = "translate(-50%, -50%) rotate(0deg)";
-  }
-  if (compassHeading) {
-    compassHeading.textContent = "--°";
-  }
-}
-
-function screenOrientationAngle() {
-  if (typeof window.screen?.orientation?.angle === "number") {
-    return window.screen.orientation.angle;
-  }
-  if (typeof window.orientation === "number") {
-    return window.orientation;
-  }
-  return 0;
-}
-
-function resolveCompassHeading(event) {
-  if (typeof event.webkitCompassHeading === "number" && Number.isFinite(event.webkitCompassHeading)) {
-    return event.webkitCompassHeading;
-  }
-  if (typeof event.alpha === "number" && Number.isFinite(event.alpha)) {
-    const raw = 360 - event.alpha + screenOrientationAngle();
-    return ((raw % 360) + 360) % 360;
+  for (let i = 0; i < clickAudios.length; i += 1) {
+    const idx = (clickSoundCursor + i) % clickAudios.length;
+    const item = clickAudios[idx];
+    if (item.usable) {
+      clickSoundCursor = (idx + 1) % clickAudios.length;
+      return item;
+    }
   }
   return null;
 }
 
-function onDeviceOrientation(event) {
-  if (!compassEnabled) {
-    return;
+function pickSoundByMode() {
+  if (selectedSoundMode === "random") {
+    return pickNextUsableClickItem();
   }
-  const heading = resolveCompassHeading(event);
-  if (heading == null) {
-    return;
-  }
-  updateCompassVisual(heading);
-  setCompassStatus("指南针已开启");
+  const exact = clickAudios.find((item) => item.name === selectedSoundMode && item.usable);
+  return exact || pickNextUsableClickItem();
 }
 
-function startCompassListening() {
-  if (compassListening) {
+function playFallbackBeep() {
+  if (!soundEnabled) {
     return;
   }
-  window.addEventListener("deviceorientationabsolute", onDeviceOrientation);
-  window.addEventListener("deviceorientation", onDeviceOrientation);
-  compassListening = true;
-}
-
-function stopCompassListening() {
-  if (!compassListening) {
-    return;
-  }
-  window.removeEventListener("deviceorientationabsolute", onDeviceOrientation);
-  window.removeEventListener("deviceorientation", onDeviceOrientation);
-  compassListening = false;
-}
-
-async function requestCompassPermission() {
-  if (
-    typeof window.DeviceOrientationEvent !== "undefined" &&
-    typeof window.DeviceOrientationEvent.requestPermission === "function"
-  ) {
-    const state = await window.DeviceOrientationEvent.requestPermission();
-    return state === "granted";
-  }
-  return true;
-}
-
-async function toggleCompass() {
-  if (compassEnabled) {
-    compassEnabled = false;
-    stopCompassListening();
-    resetCompassVisual();
-    syncCompassToggleUI();
-    setCompassStatus("指南针未开启");
-    return;
-  }
-
-  if (typeof window.DeviceOrientationEvent === "undefined") {
-    setCompassStatus("当前浏览器不支持指南针");
-    return;
-  }
-
   try {
-    const granted = await requestCompassPermission();
-    if (!granted) {
-      setCompassStatus("指南针权限被拒绝");
-      return;
-    }
+    fallbackAudioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const now = fallbackAudioCtx.currentTime;
+    const osc = fallbackAudioCtx.createOscillator();
+    const gain = fallbackAudioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(680, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.045, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
+    osc.connect(gain);
+    gain.connect(fallbackAudioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.12);
   } catch {
-    setCompassStatus("无法获取指南针权限");
+    // Ignore fallback audio failures.
+  }
+}
+
+function playSelectedClickSound() {
+  if (!soundEnabled) {
     return;
   }
 
-  compassEnabled = true;
-  resetCompassVisual();
-  syncCompassToggleUI();
-  setCompassStatus("指南针已开启，正在读取方向...");
-  const checkAt = Date.now();
-  startCompassListening();
-  setTimeout(() => {
-    if (compassEnabled && lastCompassUpdateAt < checkAt) {
-      setCompassStatus("未获取到方向数据，请在手机浏览器中允许运动与方向访问");
-    }
-  }, 2600);
+  const item = pickSoundByMode();
+  if (!item) {
+    playFallbackBeep();
+    return;
+  }
+
+  if (activeClickItem && !activeClickItem.audio.paused) {
+    activeClickItem.audio.pause();
+    activeClickItem.audio.currentTime = 0;
+  }
+
+  activeClickItem = item;
+  const { audio } = item;
+  audio.currentTime = 0;
+  const playPromise = audio.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(() => {
+      item.usable = false;
+      playSelectedClickSound();
+    });
+  }
 }
 
-function makeToken(player) {
+function startAnimationSoundLoop() {
+  if (animationSoundTimer != null) {
+    window.clearInterval(animationSoundTimer);
+  }
+  if (!soundEnabled) {
+    animationSoundTimer = null;
+    return;
+  }
+  playSelectedClickSound();
+  animationSoundTimer = window.setInterval(() => {
+    playSelectedClickSound();
+  }, 260);
+}
+
+function stopAnimationSoundLoop() {
+  if (animationSoundTimer != null) {
+    window.clearInterval(animationSoundTimer);
+    animationSoundTimer = null;
+  }
+}
+
+function makeToken(player, playerIndex) {
   const token = document.createElement("div");
   token.className = "player-token";
   token.dataset.id = player.id;
+  token.dataset.playerIndex = String(playerIndex);
   token.dataset.x = "0";
   token.dataset.y = "0";
   token.dataset.scale = "1";
@@ -282,7 +301,7 @@ function makeToken(player) {
 
   const original = document.createElement("div");
   original.className = "avatar avatar-original";
-  original.style.backgroundImage = `url("${player.originalSrc}")`;
+  original.style.backgroundImage = `url("${resolveAvatarSource(playerIndex)}")`;
 
   token.append(original);
   return token;
@@ -322,19 +341,19 @@ function tokenTopLeftForCenter(token, center) {
   };
 }
 
-function syncTokenToSeat(token) {
-  const rect = seatRect(token.dataset.seat);
-  token.style.width = `${rect.width}px`;
-  token.style.height = `${rect.height}px`;
-  writeState(token, rect.x, rect.y, 1, 0);
-}
-
 function writeState(token, x, y, scale = 1, rotate = 0) {
   token.dataset.x = String(x);
   token.dataset.y = String(y);
   token.dataset.scale = String(scale);
   token.dataset.rotate = String(rotate);
   token.style.transform = `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotate}deg)`;
+}
+
+function syncTokenToSeat(token) {
+  const rect = seatRect(token.dataset.seat);
+  token.style.width = `${rect.width}px`;
+  token.style.height = `${rect.height}px`;
+  writeState(token, rect.x, rect.y, 1, 0);
 }
 
 function animateToken(token, nextX, nextY, options = {}) {
@@ -385,77 +404,132 @@ function derangedSeatOrder(current) {
   return next;
 }
 
-function pickNextUsableClickItem() {
-  if (clickAudios.length === 0) {
-    return null;
-  }
-
-  for (let i = 0; i < clickAudios.length; i += 1) {
-    const idx = (clickSoundCursor + i) % clickAudios.length;
-    const item = clickAudios[idx];
-    if (item.usable) {
-      clickSoundCursor = (idx + 1) % clickAudios.length;
-      return item;
-    }
-  }
-  return null;
+function randomPointAround(center, minRadius, maxRadius) {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = minRadius + Math.random() * (maxRadius - minRadius);
+  return {
+    x: center.x + Math.cos(angle) * radius,
+    y: center.y + Math.sin(angle) * radius
+  };
 }
 
-function playFallbackBeep() {
-  if (!soundEnabled) {
-    return;
-  }
-  try {
-    fallbackAudioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
-    const now = fallbackAudioCtx.currentTime;
-    const osc = fallbackAudioCtx.createOscillator();
-    const gain = fallbackAudioCtx.createGain();
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(660, now);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.04, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-    osc.connect(gain);
-    gain.connect(fallbackAudioCtx.destination);
-    osc.start(now);
-    osc.stop(now + 0.14);
-  } catch {
-    // Ignore fallback audio failures.
+async function animateModeDrum(center) {
+  drum.classList.add("active");
+  const tokenSize = tokens[0]?.offsetWidth || 74;
+  const drumRadius = (drum.offsetWidth || 210) / 2 - tokenSize / 2 - 8;
+  const minRadius = Math.max(10, drumRadius * 0.35);
+  const maxRadius = Math.max(minRadius + 6, drumRadius * 0.95);
+  const swirlUntil = Date.now() + SPIN_MS;
+
+  while (Date.now() < swirlUntil) {
+    await Promise.all(
+      tokens.map((token) => {
+        const point = randomPointAround(center, minRadius, maxRadius);
+        const topLeft = tokenTopLeftForCenter(token, point);
+        const rot = Math.random() * 90 - 45;
+        const scl = 0.78 + Math.random() * 0.22;
+        return animateToken(token, topLeft.x, topLeft.y, {
+          duration: 190,
+          easing: "linear",
+          rotate: rot,
+          scale: scl
+        });
+      })
+    );
   }
 }
 
-function playNextClickSound() {
-  if (!soundEnabled) {
+async function animateModeOrbit(center) {
+  drum.classList.add("active");
+  const tokenSize = tokens[0]?.offsetWidth || 74;
+  const radius = Math.max(36, (drum.offsetWidth || 210) / 2 - tokenSize / 2 - 18);
+  const steps = Math.max(8, Math.floor(SPIN_MS / 180));
+  const unit = (Math.PI * 2) / tokens.length;
+  const phase = Math.random() * Math.PI * 2;
+
+  for (let step = 0; step < steps; step += 1) {
+    await Promise.all(
+      tokens.map((token, idx) => {
+        const angle = phase + step * 0.85 + idx * unit;
+        const point = {
+          x: center.x + Math.cos(angle) * radius,
+          y: center.y + Math.sin(angle) * radius
+        };
+        const topLeft = tokenTopLeftForCenter(token, point);
+        return animateToken(token, topLeft.x, topLeft.y, {
+          duration: 175,
+          easing: "linear",
+          rotate: step * 20 + idx * 38,
+          scale: 0.86 + (idx % 2) * 0.08
+        });
+      })
+    );
+  }
+}
+
+async function animateModeBurst(center) {
+  drum.classList.add("active");
+  const tokenSize = tokens[0]?.offsetWidth || 74;
+  const maxRadius = Math.max(30, (drum.offsetWidth || 210) / 2 - tokenSize / 2 - 4);
+  const minRadius = Math.max(12, maxRadius * 0.35);
+
+  await Promise.all(
+    tokens.map((token) => {
+      const point = randomPointAround(center, minRadius, maxRadius);
+      const topLeft = tokenTopLeftForCenter(token, point);
+      return animateToken(token, topLeft.x, topLeft.y, {
+        duration: 360,
+        easing: "cubic-bezier(.18,.8,.26,1)",
+        rotate: Math.random() * 160 - 80,
+        scale: 1.1
+      });
+    })
+  );
+
+  const burstUntil = Date.now() + Math.max(300, SPIN_MS - 760);
+  while (Date.now() < burstUntil) {
+    await Promise.all(
+      tokens.map((token) => {
+        const point = randomPointAround(center, 8, maxRadius * 0.68);
+        const topLeft = tokenTopLeftForCenter(token, point);
+        return animateToken(token, topLeft.x, topLeft.y, {
+          duration: 170,
+          easing: "linear",
+          rotate: Math.random() * 120 - 60,
+          scale: 0.82 + Math.random() * 0.24
+        });
+      })
+    );
+  }
+}
+
+function resolveAnimationMode() {
+  if (selectedAnimationMode !== "random") {
+    return selectedAnimationMode;
+  }
+
+  let pick = ANIMATION_MODE_IDS[Math.floor(Math.random() * ANIMATION_MODE_IDS.length)];
+  if (ANIMATION_MODE_IDS.length > 1 && pick === lastAnimationModeUsed) {
+    pick = ANIMATION_MODE_IDS.find((id) => id !== lastAnimationModeUsed) || pick;
+  }
+  return pick;
+}
+
+async function runShuffleAnimation(mode, center) {
+  if (mode === "orbit") {
+    await animateModeOrbit(center);
     return;
   }
-
-  const item = pickNextUsableClickItem();
-  if (!item) {
-    playFallbackBeep();
+  if (mode === "burst") {
+    await animateModeBurst(center);
     return;
   }
-
-  const audio = item.audio;
-
-  if (activeClickItem && !activeClickItem.audio.paused) {
-    activeClickItem.audio.pause();
-    activeClickItem.audio.currentTime = 0;
-  }
-
-  activeClickItem = item;
-  audio.currentTime = 0;
-  const playPromise = audio.play();
-  if (playPromise && typeof playPromise.catch === "function") {
-    playPromise.catch(() => {
-      item.usable = false;
-      playNextClickSound();
-    });
-  }
+  await animateModeDrum(center);
 }
 
 function renderInitialTokens() {
   PLAYER_IMAGES.forEach((player, idx) => {
-    const token = makeToken(player);
+    const token = makeToken(player, idx);
     token.dataset.seat = SEATS[idx];
     table.appendChild(token);
     tokens.push(token);
@@ -463,7 +537,6 @@ function renderInitialTokens() {
 }
 
 function warmupAssets() {
-  // Warm up image cache to reduce first-paint latency for avatars.
   PLAYER_IMAGES.forEach((player) => {
     const img = new Image();
     img.decoding = "async";
@@ -471,7 +544,16 @@ function warmupAssets() {
     warmedImageCache.push(img);
   });
 
-  // Trigger browser fetch for click sounds early.
+  customAvatarSources.forEach((src) => {
+    if (!src) {
+      return;
+    }
+    const img = new Image();
+    img.decoding = "async";
+    img.src = src;
+    warmedImageCache.push(img);
+  });
+
   clickAudios.forEach((item) => {
     try {
       item.audio.load();
@@ -487,53 +569,99 @@ function placeBySeats() {
   });
 }
 
+async function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("file read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function compressDataUrl(dataUrl, maxEdge = 320, quality = 0.86) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("canvas unavailable"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => reject(new Error("image decode failed"));
+    img.src = dataUrl;
+  });
+}
+
+async function handleAvatarUpload(event) {
+  const files = Array.from(event.target.files || []).filter((file) => file.type.startsWith("image/"));
+  if (files.length === 0) {
+    setUploadStatus("未检测到图片文件");
+    return;
+  }
+
+  const uploadCount = Math.min(files.length, PLAYER_IMAGES.length);
+  shuffleBtn.disabled = true;
+  setUploadStatus("正在处理头像...");
+
+  try {
+    for (let i = 0; i < uploadCount; i += 1) {
+      const raw = await readFileAsDataURL(files[i]);
+      const compressed = await compressDataUrl(raw);
+      customAvatarSources[i] = compressed;
+    }
+    persistCustomAvatars();
+    applyAvatarSourcesToTokens();
+    setUploadStatus(`已更新 ${uploadCount} 张头像`);
+  } catch {
+    setUploadStatus("头像处理失败，请换一张图片重试");
+  } finally {
+    shuffleBtn.disabled = false;
+    if (avatarUploadInput) {
+      avatarUploadInput.value = "";
+    }
+  }
+}
+
+function clearCustomAvatars() {
+  for (let i = 0; i < customAvatarSources.length; i += 1) {
+    customAvatarSources[i] = null;
+  }
+  persistCustomAvatars();
+  applyAvatarSourcesToTokens();
+  setUploadStatus("已恢复默认头像");
+}
+
 async function shuffleSeats() {
   shuffleBtn.disabled = true;
   try {
-    playNextClickSound();
+    startAnimationSoundLoop();
 
     const center = tableCenterPoint();
     await Promise.all(
       tokens.map((token) => {
         const topLeft = tokenTopLeftForCenter(token, center);
         return animateToken(token, topLeft.x, topLeft.y, {
-          duration: 560,
+          duration: 520,
           scale: 0.9,
           rotate: 0
         });
       })
     );
 
-    drum.classList.add("active");
-    const tokenSize = tokens[0]?.offsetWidth || 74;
-    const drumRadius = (drum.offsetWidth || 210) / 2 - tokenSize / 2 - 8;
-    const minRadius = Math.max(10, drumRadius * 0.35);
-    const maxRadius = Math.max(minRadius + 6, drumRadius * 0.95);
-    const swirlUntil = Date.now() + SPIN_MS;
-    while (Date.now() < swirlUntil) {
-      await Promise.all(
-        tokens.map((token) => {
-          const angle = Math.random() * Math.PI * 2;
-          const radius = minRadius + Math.random() * (maxRadius - minRadius);
-          const point = {
-            x: center.x + Math.cos(angle) * radius,
-            y: center.y + Math.sin(angle) * radius
-          };
-          const topLeft = tokenTopLeftForCenter(token, point);
-          const rot = Math.random() * 90 - 45;
-          const scl = 0.78 + Math.random() * 0.22;
-          return animateToken(token, topLeft.x, topLeft.y, {
-            duration: 190,
-            easing: "linear",
-            rotate: rot,
-            scale: scl
-          });
-        })
-      );
-    }
-    drum.classList.remove("active");
+    const mode = resolveAnimationMode();
+    lastAnimationModeUsed = mode;
+    await runShuffleAnimation(mode, center);
 
-    const currentSeats = tokens.map((t) => t.dataset.seat);
+    const currentSeats = tokens.map((token) => token.dataset.seat);
     const nextSeats = derangedSeatOrder(currentSeats);
     tokens.forEach((token, idx) => {
       token.dataset.seat = nextSeats[idx];
@@ -544,32 +672,40 @@ async function shuffleSeats() {
         const target = seatTopLeft(token.dataset.seat);
         return animateToken(token, target.x, target.y, {
           duration: 820,
-          delay: 0,
+          easing: "cubic-bezier(.18,.82,.2,1)",
           scale: 1,
           rotate: 0
         });
       })
     );
-
   } finally {
+    stopAnimationSoundLoop();
     drum.classList.remove("active");
     shuffleBtn.disabled = false;
   }
 }
 
 function boot() {
-  loadSoundSetting();
+  loadPreferences();
   syncSoundToggleUI();
-  syncCompassToggleUI();
-  resetCompassVisual();
+  syncModeSelectUI();
   warmupAssets();
   renderInitialTokens();
+  applyAvatarSourcesToTokens();
   placeBySeats();
+
   shuffleBtn.addEventListener("click", shuffleSeats);
   soundToggleBtn?.addEventListener("click", toggleSound);
-  compassToggleBtn?.addEventListener("click", () => {
-    toggleCompass();
+  soundModeSelect?.addEventListener("change", (event) => {
+    selectedSoundMode = event.target.value;
+    persistSoundMode();
   });
+  animationModeSelect?.addEventListener("change", (event) => {
+    selectedAnimationMode = event.target.value;
+    persistAnimationMode();
+  });
+  avatarUploadInput?.addEventListener("change", handleAvatarUpload);
+  clearAvatarsBtn?.addEventListener("click", clearCustomAvatars);
   window.addEventListener("resize", () => {
     placeBySeats();
   });
