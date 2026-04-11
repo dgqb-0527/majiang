@@ -8,22 +8,16 @@
   <link rel="preload" as="image" href="pic/5ee9a04d8233202a53471842de44d5dd.jpg">
   <link rel="preload" as="image" href="pic/5a4079af4cc865cb69aebe92fb33d086.png">
   <link rel="preload" as="image" href="pic/65e6501f266153f6e844fe878132d475.jpg">
-  <link rel="preload" as="audio" href="music/1.mp3">
-  <link rel="preload" as="audio" href="music/2.mp3">
-  <link rel="preload" as="audio" href="music/3.mp3">
-  <link rel="preload" as="audio" href="music/4.wav">
-  <link rel="preload" as="audio" href="music/5.wav">
-  <link rel="preload" as="audio" href="music/6.wav">
-  <link rel="preload" as="audio" href="music/7.wav">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="page">
     <header class="hero">
       <h1>麻将随机换座位</h1>
-      <p>当前先只显示原版头像</p>
+      <p>自动洗牌、选庄与换座工具</p>
       <div class="action-row">
-        <button id="shuffleBtn" type="button" aria-label="shuffle seats">换座位</button>
+        <button id="pickDealerBtn" type="button" aria-label="pick dealer">首局选庄</button>
+        <button id="shuffleBtn" type="button" aria-label="shuffle seats">开始换座</button>
         <button id="soundToggleBtn" type="button" aria-label="toggle sound" aria-pressed="true">音效: 开</button>
       </div>
       <div class="config-row">
@@ -38,6 +32,8 @@
             <option value="music/5.wav">音效 5 木敲</option>
             <option value="music/6.wav">音效 6 呼啸</option>
             <option value="music/7.wav">音效 7 亮铃</option>
+            <option value="music/8.wav">音效 8 洗衣机旋转</option>
+            <option value="music/9.wav">音效 9 马桶冲水</option>
           </select>
         </label>
         <label class="config-item">
@@ -47,6 +43,8 @@
             <option value="drum">旋风洗牌</option>
             <option value="orbit">公转环绕</option>
             <option value="burst">冲散回位</option>
+            <option value="cross">交叉换位</option>
+            <option value="spiral">螺旋聚散</option>
           </select>
         </label>
       </div>
