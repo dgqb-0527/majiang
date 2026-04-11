@@ -1,34 +1,19 @@
 const PLAYER_IMAGES = [
-  {
-    id: "thumb",
-    originalSrc: "pic/2ffb5324361dfd71d6a02701f0ff4250.jpg"
-  },
-  {
-    id: "mouse",
-    originalSrc: "pic/5ee9a04d8233202a53471842de44d5dd.jpg"
-  },
-  {
-    id: "sun",
-    originalSrc: "pic/5a4079af4cc865cb69aebe92fb33d086.png"
-  },
-  {
-    id: "cat",
-    originalSrc: "pic/65e6501f266153f6e844fe878132d475.jpg"
-  }
+  { id: "thumb", originalSrc: "pic/2ffb5324361dfd71d6a02701f0ff4250.jpg" },
+  { id: "mouse", originalSrc: "pic/5ee9a04d8233202a53471842de44d5dd.jpg" },
+  { id: "sun", originalSrc: "pic/5a4079af4cc865cb69aebe92fb33d086.png" },
+  { id: "cat", originalSrc: "pic/65e6501f266153f6e844fe878132d475.jpg" }
 ];
 
 const SEATS = ["top", "right", "bottom", "left"];
 const SPIN_MS = 2200;
 const CLICK_SOUND_FILES = [
-  "music/1.mp3",
-  "music/2.mp3",
-  "music/3.mp3",
-  "music/4.wav",
-  "music/5.wav",
-  "music/6.wav",
-  "music/7.wav"
+  "music/1.mp3", "music/2.mp3", "music/3.mp3",
+  "music/4.wav", "music/5.wav", "music/6.wav",
+  "music/7.wav", "music/8.wav", "music/9.wav"
 ];
-const ANIMATION_MODE_IDS = ["drum", "orbit", "burst"];
+// 新增了交叉和螺旋动画
+const ANIMATION_MODE_IDS = ["drum", "orbit", "burst", "cross", "spiral"];
 
 const STORAGE_KEYS = {
   soundEnabled: "sound_enabled",
@@ -40,6 +25,7 @@ const STORAGE_KEYS = {
 const table = document.getElementById("table");
 const drum = document.getElementById("drum");
 const shuffleBtn = document.getElementById("shuffleBtn");
+const pickDealerBtn = document.getElementById("pickDealerBtn");
 const soundToggleBtn = document.getElementById("soundToggleBtn");
 const soundModeSelect = document.getElementById("soundModeSelect");
 const animationModeSelect = document.getElementById("animationModeSelect");
@@ -54,15 +40,8 @@ const clickAudios = CLICK_SOUND_FILES.map((path) => {
   const src = encodeURI(path);
   const audio = new Audio(src);
   audio.preload = "auto";
-  const item = {
-    name: path,
-    src,
-    audio,
-    usable: true
-  };
-  audio.addEventListener("error", () => {
-    item.usable = false;
-  });
+  const item = { name: path, src, audio, usable: true };
+  audio.addEventListener("error", () => { item.usable = false; });
   return item;
 });
 
@@ -76,10 +55,7 @@ let animationSoundTimer = null;
 let lastAnimationModeUsed = null;
 
 function setUploadStatus(text) {
-  if (!uploadStatus) {
-    return;
-  }
-  uploadStatus.textContent = text;
+  if (uploadStatus) uploadStatus.textContent = text;
 }
 
 function resolveAvatarSource(playerIndex) {
@@ -88,10 +64,7 @@ function resolveAvatarSource(playerIndex) {
 
 function setTokenAvatar(token, src) {
   const avatar = token.querySelector(".avatar-original");
-  if (!avatar) {
-    return;
-  }
-  avatar.style.backgroundImage = `url("${src}")`;
+  if (avatar) avatar.style.backgroundImage = `url("${src}")`;
 }
 
 function applyAvatarSourcesToTokens() {
@@ -103,84 +76,40 @@ function applyAvatarSourcesToTokens() {
 
 function loadPreferences() {
   try {
-    const soundEnabledVal = localStorage.getItem(STORAGE_KEYS.soundEnabled);
-    if (soundEnabledVal === "0") {
-      soundEnabled = false;
-    }
-
+    if (localStorage.getItem(STORAGE_KEYS.soundEnabled) === "0") soundEnabled = false;
     const soundModeVal = localStorage.getItem(STORAGE_KEYS.soundMode);
-    if (soundModeVal === "random" || CLICK_SOUND_FILES.includes(soundModeVal)) {
-      selectedSoundMode = soundModeVal;
-    }
-
+    if (soundModeVal === "random" || CLICK_SOUND_FILES.includes(soundModeVal)) selectedSoundMode = soundModeVal;
     const animationModeVal = localStorage.getItem(STORAGE_KEYS.animationMode);
-    if (animationModeVal === "random" || ANIMATION_MODE_IDS.includes(animationModeVal)) {
-      selectedAnimationMode = animationModeVal;
-    }
-
+    if (animationModeVal === "random" || ANIMATION_MODE_IDS.includes(animationModeVal)) selectedAnimationMode = animationModeVal;
     const customAvatarsVal = localStorage.getItem(STORAGE_KEYS.customAvatars);
     if (customAvatarsVal) {
       const parsed = JSON.parse(customAvatarsVal);
       if (Array.isArray(parsed)) {
         parsed.slice(0, customAvatarSources.length).forEach((src, idx) => {
-          if (typeof src === "string" && src.startsWith("data:image/")) {
-            customAvatarSources[idx] = src;
-          }
+          if (typeof src === "string" && src.startsWith("data:image/")) customAvatarSources[idx] = src;
         });
       }
     }
-  } catch {
-    // Ignore local storage errors.
-  }
+  } catch {}
 }
 
-function persistSoundEnabled() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.soundEnabled, soundEnabled ? "1" : "0");
-  } catch {
-    // Ignore local storage errors.
-  }
-}
-
-function persistSoundMode() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.soundMode, selectedSoundMode);
-  } catch {
-    // Ignore local storage errors.
-  }
-}
-
-function persistAnimationMode() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.animationMode, selectedAnimationMode);
-  } catch {
-    // Ignore local storage errors.
-  }
-}
-
+function persistSoundEnabled() { try { localStorage.setItem(STORAGE_KEYS.soundEnabled, soundEnabled ? "1" : "0"); } catch {} }
+function persistSoundMode() { try { localStorage.setItem(STORAGE_KEYS.soundMode, selectedSoundMode); } catch {} }
+function persistAnimationMode() { try { localStorage.setItem(STORAGE_KEYS.animationMode, selectedAnimationMode); } catch {} }
 function persistCustomAvatars() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.customAvatars, JSON.stringify(customAvatarSources));
-  } catch {
-    setUploadStatus("头像保存失败：浏览器存储空间不足");
-  }
+  try { localStorage.setItem(STORAGE_KEYS.customAvatars, JSON.stringify(customAvatarSources)); }
+  catch { setUploadStatus("头像保存失败：浏览器存储空间不足"); }
 }
 
 function syncSoundToggleUI() {
-  if (!soundToggleBtn) {
-    return;
-  }
+  if (!soundToggleBtn) return;
   soundToggleBtn.setAttribute("aria-pressed", soundEnabled ? "true" : "false");
   soundToggleBtn.textContent = soundEnabled ? "音效: 开" : "音效: 关";
 }
 
 function syncModeSelectUI() {
-  if (soundModeSelect) {
-    soundModeSelect.value = selectedSoundMode;
-  }
-  if (animationModeSelect) {
-    animationModeSelect.value = selectedAnimationMode;
-  }
+  if (soundModeSelect) soundModeSelect.value = selectedSoundMode;
+  if (animationModeSelect) animationModeSelect.value = selectedAnimationMode;
 }
 
 function toggleSound() {
@@ -194,10 +123,7 @@ function toggleSound() {
 }
 
 function pickNextUsableClickItem() {
-  if (clickAudios.length === 0) {
-    return null;
-  }
-
+  if (clickAudios.length === 0) return null;
   for (let i = 0; i < clickAudios.length; i += 1) {
     const idx = (clickSoundCursor + i) % clickAudios.length;
     const item = clickAudios[idx];
@@ -210,17 +136,13 @@ function pickNextUsableClickItem() {
 }
 
 function pickSoundByMode() {
-  if (selectedSoundMode === "random") {
-    return pickNextUsableClickItem();
-  }
+  if (selectedSoundMode === "random") return pickNextUsableClickItem();
   const exact = clickAudios.find((item) => item.name === selectedSoundMode && item.usable);
   return exact || pickNextUsableClickItem();
 }
 
 function playFallbackBeep() {
-  if (!soundEnabled) {
-    return;
-  }
+  if (!soundEnabled) return;
   try {
     fallbackAudioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
     const now = fallbackAudioCtx.currentTime;
@@ -235,51 +157,31 @@ function playFallbackBeep() {
     gain.connect(fallbackAudioCtx.destination);
     osc.start(now);
     osc.stop(now + 0.12);
-  } catch {
-    // Ignore fallback audio failures.
-  }
+  } catch {}
 }
 
 function playSelectedClickSound() {
-  if (!soundEnabled) {
-    return;
-  }
-
+  if (!soundEnabled) return;
   const item = pickSoundByMode();
-  if (!item) {
-    playFallbackBeep();
-    return;
-  }
-
+  if (!item) { playFallbackBeep(); return; }
   if (activeClickItem && !activeClickItem.audio.paused) {
     activeClickItem.audio.pause();
     activeClickItem.audio.currentTime = 0;
   }
-
   activeClickItem = item;
   const { audio } = item;
   audio.currentTime = 0;
   const playPromise = audio.play();
   if (playPromise && typeof playPromise.catch === "function") {
-    playPromise.catch(() => {
-      item.usable = false;
-      playSelectedClickSound();
-    });
+    playPromise.catch(() => { item.usable = false; playSelectedClickSound(); });
   }
 }
 
-function startAnimationSoundLoop() {
-  if (animationSoundTimer != null) {
-    window.clearInterval(animationSoundTimer);
-  }
-  if (!soundEnabled) {
-    animationSoundTimer = null;
-    return;
-  }
+function startAnimationSoundLoop(interval = 260) {
+  if (animationSoundTimer != null) window.clearInterval(animationSoundTimer);
+  if (!soundEnabled) { animationSoundTimer = null; return; }
   playSelectedClickSound();
-  animationSoundTimer = window.setInterval(() => {
-    playSelectedClickSound();
-  }, 260);
+  animationSoundTimer = window.setInterval(() => { playSelectedClickSound(); }, interval);
 }
 
 function stopAnimationSoundLoop() {
@@ -294,58 +196,37 @@ function makeToken(player, playerIndex) {
   token.className = "player-token";
   token.dataset.id = player.id;
   token.dataset.playerIndex = String(playerIndex);
-  token.dataset.x = "0";
-  token.dataset.y = "0";
-  token.dataset.scale = "1";
-  token.dataset.rotate = "0";
-
+  token.dataset.x = "0"; token.dataset.y = "0"; token.dataset.scale = "1"; token.dataset.rotate = "0";
   const original = document.createElement("div");
   original.className = "avatar avatar-original";
   original.style.backgroundImage = `url("${resolveAvatarSource(playerIndex)}")`;
-
   token.append(original);
   return token;
 }
 
 function tableCenterPoint() {
-  return {
-    x: table.clientWidth / 2,
-    y: table.clientHeight / 2
-  };
+  return { x: table.clientWidth / 2, y: table.clientHeight / 2 };
 }
 
 function seatRect(seatName) {
   const seat = table.querySelector(`[data-seat="${seatName}"]`);
-  return {
-    x: seat.offsetLeft,
-    y: seat.offsetTop,
-    width: seat.offsetWidth,
-    height: seat.offsetHeight
-  };
+  return { x: seat.offsetLeft, y: seat.offsetTop, width: seat.offsetWidth, height: seat.offsetHeight };
 }
 
 function seatTopLeft(seatName) {
   const rect = seatRect(seatName);
-  return {
-    x: rect.x,
-    y: rect.y
-  };
+  return { x: rect.x, y: rect.y };
 }
 
 function tokenTopLeftForCenter(token, center) {
-  const width = token.offsetWidth || 78;
-  const height = token.offsetHeight || 78;
-  return {
-    x: center.x - width / 2,
-    y: center.y - height / 2
-  };
+  const width = token.offsetWidth || 74;
+  const height = token.offsetHeight || 74;
+  return { x: center.x - width / 2, y: center.y - height / 2 };
 }
 
 function writeState(token, x, y, scale = 1, rotate = 0) {
-  token.dataset.x = String(x);
-  token.dataset.y = String(y);
-  token.dataset.scale = String(scale);
-  token.dataset.rotate = String(rotate);
+  token.dataset.x = String(x); token.dataset.y = String(y);
+  token.dataset.scale = String(scale); token.dataset.rotate = String(rotate);
   token.style.transform = `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotate}deg)`;
 }
 
@@ -363,7 +244,6 @@ function animateToken(token, nextX, nextY, options = {}) {
   const fromRotate = Number(token.dataset.rotate || 0);
   const toScale = options.scale ?? 1;
   const toRotate = options.rotate ?? 0;
-
   const anim = token.animate(
     [
       { transform: `translate(${fromX}px, ${fromY}px) scale(${fromScale}) rotate(${fromRotate}deg)` },
@@ -376,12 +256,8 @@ function animateToken(token, nextX, nextY, options = {}) {
       fill: "forwards"
     }
   );
-
   return new Promise((resolve) => {
-    anim.onfinish = () => {
-      writeState(token, nextX, nextY, toScale, toRotate);
-      resolve();
-    };
+    anim.onfinish = () => { writeState(token, nextX, nextY, toScale, toRotate); resolve(); };
   });
 }
 
@@ -407,12 +283,10 @@ function derangedSeatOrder(current) {
 function randomPointAround(center, minRadius, maxRadius) {
   const angle = Math.random() * Math.PI * 2;
   const radius = minRadius + Math.random() * (maxRadius - minRadius);
-  return {
-    x: center.x + Math.cos(angle) * radius,
-    y: center.y + Math.sin(angle) * radius
-  };
+  return { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
 }
 
+// 动画：旋风
 async function animateModeDrum(center) {
   drum.classList.add("active");
   const tokenSize = tokens[0]?.offsetWidth || 74;
@@ -420,25 +294,18 @@ async function animateModeDrum(center) {
   const minRadius = Math.max(10, drumRadius * 0.35);
   const maxRadius = Math.max(minRadius + 6, drumRadius * 0.95);
   const swirlUntil = Date.now() + SPIN_MS;
-
   while (Date.now() < swirlUntil) {
-    await Promise.all(
-      tokens.map((token) => {
-        const point = randomPointAround(center, minRadius, maxRadius);
-        const topLeft = tokenTopLeftForCenter(token, point);
-        const rot = Math.random() * 90 - 45;
-        const scl = 0.78 + Math.random() * 0.22;
-        return animateToken(token, topLeft.x, topLeft.y, {
-          duration: 190,
-          easing: "linear",
-          rotate: rot,
-          scale: scl
-        });
-      })
-    );
+    await Promise.all(tokens.map((token) => {
+      const point = randomPointAround(center, minRadius, maxRadius);
+      const topLeft = tokenTopLeftForCenter(token, point);
+      return animateToken(token, topLeft.x, topLeft.y, {
+        duration: 190, easing: "linear", rotate: Math.random() * 90 - 45, scale: 0.78 + Math.random() * 0.22
+      });
+    }));
   }
 }
 
+// 动画：公转
 async function animateModeOrbit(center) {
   drum.classList.add("active");
   const tokenSize = tokens[0]?.offsetWidth || 74;
@@ -446,68 +313,83 @@ async function animateModeOrbit(center) {
   const steps = Math.max(8, Math.floor(SPIN_MS / 180));
   const unit = (Math.PI * 2) / tokens.length;
   const phase = Math.random() * Math.PI * 2;
-
   for (let step = 0; step < steps; step += 1) {
-    await Promise.all(
-      tokens.map((token, idx) => {
-        const angle = phase + step * 0.85 + idx * unit;
-        const point = {
-          x: center.x + Math.cos(angle) * radius,
-          y: center.y + Math.sin(angle) * radius
-        };
-        const topLeft = tokenTopLeftForCenter(token, point);
-        return animateToken(token, topLeft.x, topLeft.y, {
-          duration: 175,
-          easing: "linear",
-          rotate: step * 20 + idx * 38,
-          scale: 0.86 + (idx % 2) * 0.08
-        });
-      })
-    );
+    await Promise.all(tokens.map((token, idx) => {
+      const angle = phase + step * 0.85 + idx * unit;
+      const point = { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
+      const topLeft = tokenTopLeftForCenter(token, point);
+      return animateToken(token, topLeft.x, topLeft.y, {
+        duration: 175, easing: "linear", rotate: step * 20 + idx * 38, scale: 0.86 + (idx % 2) * 0.08
+      });
+    }));
   }
 }
 
+// 动画：冲散
 async function animateModeBurst(center) {
   drum.classList.add("active");
   const tokenSize = tokens[0]?.offsetWidth || 74;
   const maxRadius = Math.max(30, (drum.offsetWidth || 210) / 2 - tokenSize / 2 - 4);
   const minRadius = Math.max(12, maxRadius * 0.35);
-
-  await Promise.all(
-    tokens.map((token) => {
-      const point = randomPointAround(center, minRadius, maxRadius);
-      const topLeft = tokenTopLeftForCenter(token, point);
-      return animateToken(token, topLeft.x, topLeft.y, {
-        duration: 360,
-        easing: "cubic-bezier(.18,.8,.26,1)",
-        rotate: Math.random() * 160 - 80,
-        scale: 1.1
-      });
-    })
-  );
-
+  await Promise.all(tokens.map((token) => {
+    const point = randomPointAround(center, minRadius, maxRadius);
+    const topLeft = tokenTopLeftForCenter(token, point);
+    return animateToken(token, topLeft.x, topLeft.y, {
+      duration: 360, easing: "cubic-bezier(.18,.8,.26,1)", rotate: Math.random() * 160 - 80, scale: 1.1
+    });
+  }));
   const burstUntil = Date.now() + Math.max(300, SPIN_MS - 760);
   while (Date.now() < burstUntil) {
-    await Promise.all(
-      tokens.map((token) => {
-        const point = randomPointAround(center, 8, maxRadius * 0.68);
-        const topLeft = tokenTopLeftForCenter(token, point);
-        return animateToken(token, topLeft.x, topLeft.y, {
-          duration: 170,
-          easing: "linear",
-          rotate: Math.random() * 120 - 60,
-          scale: 0.82 + Math.random() * 0.24
-        });
-      })
-    );
+    await Promise.all(tokens.map((token) => {
+      const point = randomPointAround(center, 8, maxRadius * 0.68);
+      const topLeft = tokenTopLeftForCenter(token, point);
+      return animateToken(token, topLeft.x, topLeft.y, {
+        duration: 170, easing: "linear", rotate: Math.random() * 120 - 60, scale: 0.82 + Math.random() * 0.24
+      });
+    }));
+  }
+}
+
+// 新增动画：交叉换位 (Cross)
+async function animateModeCross(center) {
+  drum.classList.add("active");
+  const offset = 80;
+  const steps = Math.floor(SPIN_MS / 300);
+  for (let step = 0; step < steps; step++) {
+    await Promise.all(tokens.map((token, idx) => {
+      // 交替对角线运动
+      const dirX = (idx % 2 === 0 ? 1 : -1) * (step % 2 === 0 ? 1 : -1);
+      const dirY = (idx < 2 ? 1 : -1) * (step % 2 === 0 ? 1 : -1);
+      const point = { x: center.x + dirX * offset, y: center.y + dirY * offset };
+      const topLeft = tokenTopLeftForCenter(token, point);
+      return animateToken(token, topLeft.x, topLeft.y, {
+        duration: 280, easing: "ease-in-out", rotate: step * 90, scale: 0.9
+      });
+    }));
+  }
+}
+
+// 新增动画：螺旋聚散 (Spiral)
+async function animateModeSpiral(center) {
+  drum.classList.add("active");
+  const steps = 15;
+  const timePerStep = SPIN_MS / steps;
+  for (let step = 0; step < steps; step++) {
+    await Promise.all(tokens.map((token, idx) => {
+      // 半径从大到小再到大
+      const radius = Math.abs(Math.cos(step / steps * Math.PI)) * 80 + 10;
+      const angle = (step * 0.5) + (idx * Math.PI / 2);
+      const point = { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
+      const topLeft = tokenTopLeftForCenter(token, point);
+      return animateToken(token, topLeft.x, topLeft.y, {
+        duration: timePerStep, easing: "linear", rotate: angle * (180/Math.PI), scale: 0.7 + (radius/100)
+      });
+    }));
   }
 }
 
 function resolveAnimationMode() {
-  if (selectedAnimationMode !== "random") {
-    return selectedAnimationMode;
-  }
-
+  if (selectedAnimationMode !== "random") return selectedAnimationMode;
   let pick = ANIMATION_MODE_IDS[Math.floor(Math.random() * ANIMATION_MODE_IDS.length)];
   if (ANIMATION_MODE_IDS.length > 1 && pick === lastAnimationModeUsed) {
     pick = ANIMATION_MODE_IDS.find((id) => id !== lastAnimationModeUsed) || pick;
@@ -516,14 +398,10 @@ function resolveAnimationMode() {
 }
 
 async function runShuffleAnimation(mode, center) {
-  if (mode === "orbit") {
-    await animateModeOrbit(center);
-    return;
-  }
-  if (mode === "burst") {
-    await animateModeBurst(center);
-    return;
-  }
+  if (mode === "orbit") { await animateModeOrbit(center); return; }
+  if (mode === "burst") { await animateModeBurst(center); return; }
+  if (mode === "cross") { await animateModeCross(center); return; }
+  if (mode === "spiral") { await animateModeSpiral(center); return; }
   await animateModeDrum(center);
 }
 
@@ -538,36 +416,16 @@ function renderInitialTokens() {
 
 function warmupAssets() {
   PLAYER_IMAGES.forEach((player) => {
-    const img = new Image();
-    img.decoding = "async";
-    img.src = player.originalSrc;
-    warmedImageCache.push(img);
+    const img = new Image(); img.decoding = "async"; img.src = player.originalSrc; warmedImageCache.push(img);
   });
-
   customAvatarSources.forEach((src) => {
-    if (!src) {
-      return;
-    }
-    const img = new Image();
-    img.decoding = "async";
-    img.src = src;
-    warmedImageCache.push(img);
+    if (!src) return;
+    const img = new Image(); img.decoding = "async"; img.src = src; warmedImageCache.push(img);
   });
-
-  clickAudios.forEach((item) => {
-    try {
-      item.audio.load();
-    } catch {
-      item.usable = false;
-    }
-  });
+  clickAudios.forEach((item) => { try { item.audio.load(); } catch { item.usable = false; } });
 }
 
-function placeBySeats() {
-  tokens.forEach((token) => {
-    syncTokenToSeat(token);
-  });
-}
+function placeBySeats() { tokens.forEach((token) => { syncTokenToSeat(token); }); }
 
 async function readFileAsDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -586,13 +444,9 @@ async function compressDataUrl(dataUrl, maxEdge = 320, quality = 0.86) {
       const width = Math.max(1, Math.round(img.width * scale));
       const height = Math.max(1, Math.round(img.height * scale));
       const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = width; canvas.height = height;
       const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("canvas unavailable"));
-        return;
-      }
+      if (!ctx) { reject(new Error("canvas unavailable")); return; }
       ctx.drawImage(img, 0, 0, width, height);
       resolve(canvas.toDataURL("image/jpeg", quality));
     };
@@ -603,15 +457,10 @@ async function compressDataUrl(dataUrl, maxEdge = 320, quality = 0.86) {
 
 async function handleAvatarUpload(event) {
   const files = Array.from(event.target.files || []).filter((file) => file.type.startsWith("image/"));
-  if (files.length === 0) {
-    setUploadStatus("未检测到图片文件");
-    return;
-  }
-
+  if (files.length === 0) { setUploadStatus("未检测到图片文件"); return; }
   const uploadCount = Math.min(files.length, PLAYER_IMAGES.length);
-  shuffleBtn.disabled = true;
+  shuffleBtn.disabled = true; pickDealerBtn.disabled = true;
   setUploadStatus("正在处理头像...");
-
   try {
     for (let i = 0; i < uploadCount; i += 1) {
       const raw = await readFileAsDataURL(files[i]);
@@ -624,64 +473,81 @@ async function handleAvatarUpload(event) {
   } catch {
     setUploadStatus("头像处理失败，请换一张图片重试");
   } finally {
-    shuffleBtn.disabled = false;
-    if (avatarUploadInput) {
-      avatarUploadInput.value = "";
-    }
+    shuffleBtn.disabled = false; pickDealerBtn.disabled = false;
+    if (avatarUploadInput) avatarUploadInput.value = "";
   }
 }
 
 function clearCustomAvatars() {
-  for (let i = 0; i < customAvatarSources.length; i += 1) {
-    customAvatarSources[i] = null;
-  }
+  for (let i = 0; i < customAvatarSources.length; i += 1) customAvatarSources[i] = null;
   persistCustomAvatars();
   applyAvatarSourcesToTokens();
   setUploadStatus("已恢复默认头像");
 }
 
-async function shuffleSeats() {
+// 核心逻辑：选庄
+async function pickDealer() {
+  if (shuffleBtn.disabled || pickDealerBtn.disabled) return;
   shuffleBtn.disabled = true;
+  pickDealerBtn.disabled = true;
+  
+  // 清除旧的庄家角标
+  document.querySelectorAll('.dealer-icon').forEach(el => el.remove());
+  
+  setUploadStatus("掷骰子选庄中...");
+  // 使用较快的频率模拟掷骰子声音
+  startAnimationSoundLoop(120);
+
+  // 模拟掷骰子等待时间
+  await new Promise(r => setTimeout(r, 1500));
+  stopAnimationSoundLoop();
+
+  // 随机选择一位庄家
+  const randomIndex = Math.floor(Math.random() * tokens.length);
+  const dealerToken = tokens[randomIndex];
+
+  // 添加庄家角标
+  const badge = document.createElement('div');
+  badge.className = 'dealer-icon';
+  badge.textContent = '庄';
+  dealerToken.appendChild(badge);
+
+  // 为被选中的玩家执行一个凸起的强调动画
+  const currentX = Number(dealerToken.dataset.x);
+  const currentY = Number(dealerToken.dataset.y);
+  await animateToken(dealerToken, currentX, currentY, { duration: 300, scale: 1.25, rotate: 0 });
+  await animateToken(dealerToken, currentX, currentY, { duration: 300, scale: 1, rotate: 0 });
+
+  const seatNames = { top: "上", right: "右", bottom: "下", left: "左" };
+  setUploadStatus(`选庄完毕！本局庄家在 [${seatNames[dealerToken.dataset.seat]}] 位`);
+  
+  shuffleBtn.disabled = false;
+  pickDealerBtn.disabled = false;
+}
+
+async function shuffleSeats() {
+  shuffleBtn.disabled = true; pickDealerBtn.disabled = true;
   try {
     startAnimationSoundLoop();
-
     const center = tableCenterPoint();
-    await Promise.all(
-      tokens.map((token) => {
-        const topLeft = tokenTopLeftForCenter(token, center);
-        return animateToken(token, topLeft.x, topLeft.y, {
-          duration: 520,
-          scale: 0.9,
-          rotate: 0
-        });
-      })
-    );
-
+    await Promise.all(tokens.map((token) => {
+      const topLeft = tokenTopLeftForCenter(token, center);
+      return animateToken(token, topLeft.x, topLeft.y, { duration: 520, scale: 0.9, rotate: 0 });
+    }));
     const mode = resolveAnimationMode();
     lastAnimationModeUsed = mode;
     await runShuffleAnimation(mode, center);
-
     const currentSeats = tokens.map((token) => token.dataset.seat);
     const nextSeats = derangedSeatOrder(currentSeats);
-    tokens.forEach((token, idx) => {
-      token.dataset.seat = nextSeats[idx];
-    });
-
-    await Promise.all(
-      tokens.map((token) => {
-        const target = seatTopLeft(token.dataset.seat);
-        return animateToken(token, target.x, target.y, {
-          duration: 820,
-          easing: "cubic-bezier(.18,.82,.2,1)",
-          scale: 1,
-          rotate: 0
-        });
-      })
-    );
+    tokens.forEach((token, idx) => { token.dataset.seat = nextSeats[idx]; });
+    await Promise.all(tokens.map((token) => {
+      const target = seatTopLeft(token.dataset.seat);
+      return animateToken(token, target.x, target.y, { duration: 820, easing: "cubic-bezier(.18,.82,.2,1)", scale: 1, rotate: 0 });
+    }));
   } finally {
     stopAnimationSoundLoop();
     drum.classList.remove("active");
-    shuffleBtn.disabled = false;
+    shuffleBtn.disabled = false; pickDealerBtn.disabled = false;
   }
 }
 
@@ -694,6 +560,7 @@ function boot() {
   applyAvatarSourcesToTokens();
   placeBySeats();
 
+  pickDealerBtn?.addEventListener("click", pickDealer);
   shuffleBtn.addEventListener("click", shuffleSeats);
   soundToggleBtn?.addEventListener("click", toggleSound);
   soundModeSelect?.addEventListener("change", (event) => {
@@ -706,9 +573,7 @@ function boot() {
   });
   avatarUploadInput?.addEventListener("change", handleAvatarUpload);
   clearAvatarsBtn?.addEventListener("click", clearCustomAvatars);
-  window.addEventListener("resize", () => {
-    placeBySeats();
-  });
+  window.addEventListener("resize", () => { placeBySeats(); });
 }
 
 boot();
